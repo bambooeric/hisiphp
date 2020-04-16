@@ -141,13 +141,14 @@ class Cloud {
      * @author 橘子俊 <364666827@qq.com>
      */
     private function run($request = true){
-        $params['format'] = 'json';
-        $params['timestamp'] = time();
-        $params['domain'] = get_domain().ROOT_DIR;
-        $params['identifier'] = $this->identifier;
+        $params['format']       = 'json';
+        $params['timestamp']    = time();
+        $params['domain']       = get_domain().ROOT_DIR;
+        $params['ip']           = isset($_SERVER['SERVER_ADDR']) ? $_SERVER['SERVER_ADDR'] : get_client_ip();
+        $params['identifier']   = $this->identifier;
         $params['hisi_version'] = config('hisiphp.version');
-        $params = array_merge($params,$this->data);
-        $params = array_filter($params);
+        $params                 = array_merge($params, $this->data);
+        $params                 = array_filter($params);
         if (is_file($this->lock)) {
             @unlink($this->lock);
         }
@@ -159,9 +160,9 @@ class Cloud {
             return $result;
         }
         if($this->type == 'get'){
-            $result = http::getRequest($this->api, $params);
+            $result = Http::get($this->api, $params);
         }elseif ($this->type == 'post') {
-            $result = http::postRequest($this->api, $params);
+            $result = Http::post($this->api, $params);
         }
         return self::_response($result);
     }

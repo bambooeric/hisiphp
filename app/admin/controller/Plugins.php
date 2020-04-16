@@ -43,15 +43,11 @@ class Plugins extends Admin
                 'url' => 'admin/plugins/index?status=0',
             ],
             [
-                'title' => '<strong style="color:#428bca">应用市场</strong>',
-                'url' => 'http://store.hisiphp.com/addons',
-            ],
-            [
                 'title' => '导入插件',
                 'url' => 'admin/plugins/import',
             ],
         ];
-        if (config('develop.app_debug') == 1) {
+        if (config('sys.app_debug') == 1) {
             array_push($tab_data['menu'], ['title' => '设计新插件', 'url' => 'admin/plugins/design',]);
         }
         $this->tab_data = $tab_data;
@@ -68,7 +64,7 @@ class Plugins extends Admin
         $tab_data['current'] = url('?status='.$status);
         $map = [];
         $map['status'] = $status;
-        $plugins = PluginsModel::where($map)->order('sort,id')->column('id,title,author,intro,icon,system,app_id,identifier,name,version,status');
+        $plugins = PluginsModel::where($map)->order('sort,id')->column('id,title,author,intro,icon,system,app_keys,identifier,name,version,status');
         if ($status == 0) {
             $plugins_path = ROOT_PATH.DS.'plugins'.DS;
             // 自动将本地未入库的插件导入数据库
@@ -93,13 +89,15 @@ class Plugins extends Admin
                     $sql['config'] = '';
                     $sql['status'] = 0;
                     $sql['system'] = 0;
-                    $sql['app_id'] = 0;
+                    $sql['app_keys'] = '';
                     $db = PluginsModel::create($sql);
                     $sql['id'] = $db->id;
                     $plugins = array_merge($plugins, [$sql]);
                 }
             }
         }
+
+        $this->assign('emptyTips', '<tr><td colspan="5" align="center" height="100">未发现相关模块，快去<a href="'.url('store/index').'?type=2"> <strong style="color:#428bca">应用市场</strong> </a>看看吧！</td></tr>');
         $this->assign('data_list', array_values($plugins));
         $this->assign('tab_data', $tab_data);
         $this->assign('tab_type', 1);
@@ -113,7 +111,7 @@ class Plugins extends Admin
      */
     public function design()
     {
-        if (config('develop.app_debug') == 0) {
+        if (config('sys.app_debug') == 0) {
             return $this->error('非开发模式禁止使用此功能！');
         }
         if ($this->request->isPost()) {
@@ -185,59 +183,80 @@ class Plugins extends Admin
      * 安装插件
      * @author 橘子俊 <364666827@qq.com>
      */
-    public function install($id = 0)
+    public function install()
+    {
+        $id = get_num();
+        $result = self::execInstall($id);
+        if ($result !== true) {
+            return $this->error($result);
+        }
+        return $this->success('插件已安装成功', url('index?status=2'));
+    }
+
+    /**
+     * 执行插件安装
+     * @date   2018-11-01
+     * @access public
+     * @author 橘子俊 364666827@qq.com
+     * @param  int $id  模块ID
+     * @return bool|string  
+     */
+    public function execInstall($id)
     {
         $plug = PluginsModel::where('id', $id)->find();
         if (!$plug) {
-            return $this->error('插件不存在！');
+            return '插件不存在';
         }
         if ($plug['status'] > 0) {
-            return $this->error('请勿重复安装此插件！');
+            return true;
         }
-        $plug_class = get_plugins_class($plug['name']);
-        if (!class_exists($plug_class)) {
-            return $this->error('插件不存在！');
+        $plugClass = get_plugins_class($plug['name']);
+        if (!class_exists($plugClass)) {
+            return '插件类不存在';
         }
 
-        $plug_path = ROOT_PATH.'plugins/'.$plug['name'].'/';
+        $plugPath = ROOT_PATH.'plugins/'.$plug['name'].'/';
+
         // 插件基本信息
-        if (!file_exists($plug_path.'info.php')) {
-            return $this->error('插件文件[info.php]丢失！');
+        if (!file_exists($plugPath.'info.php')) {
+            return '插件文件[info.php]丢失';
         }
-        $info = include_once $plug_path.'info.php';
+        $info = include_once $plugPath.'info.php';
 
-        $plug_obj = new $plug_class;
+        $plugObj = new $plugClass;
+
         // 安装前先执行插件内部安装程序
-        if(!$plug_obj->install()) {
-            return $this->error('插件预安装失败!原因：'. $plug_obj->getError());
+        if(!$plugObj->install()) {
+            return '插件预安装失败!原因：'. $plugObj->getError();
         }
 
         // 将插件钩子注入到钩子索引表
-        if (isset($plug_obj->hooks) && !empty($plug_obj->hooks)) {
-            if (!HookPluginsModel::storage($plug_obj->hooks, $plug['name'])) {
-                return $this->error('安装插件钩子时出现错误，请重新安装');
+        if (isset($plugObj->hooks) && !empty($plugObj->hooks)) {
+            if (!HookPluginsModel::storage($plugObj->hooks, $plug['name'])) {
+                return '安装插件钩子时出现错误，请重新安装';
             }
             cache('hook_plugins', null);
         }
+
         // 导入SQL
-        $sql_file = realpath($plug_path.'sql/install.sql');
-        if (file_exists($sql_file)) {
-            $sql = file_get_contents($sql_file);
-            $sql_list = parse_sql($sql, 0, [$info['db_prefix'] => config('database.prefix')]);
-            if ($sql_list) {
-                $sql_list = array_filter($sql_list);
-                foreach ($sql_list as $v) {
+        $sqlFile = realpath($plugPath.'sql/install.sql');
+        if (file_exists($sqlFile)) {
+            $sql = file_get_contents($sqlFile);
+            $sqlList = parse_sql($sql, 0, [$info['db_prefix'] => config('database.prefix')]);
+            if ($sqlList) {
+                $sqlList = array_filter($sqlList);
+                foreach ($sqlList as $v) {
                     // 过滤sql里面的系统表
                     foreach (config('hs_system.tables') as $t) {
                         if (stripos($v, '`'.config('database.prefix').$t.'`') !== false) {
-                            return $this->error('install.sql文件含有系统表['.$t.']');
+                            return 'install.sql文件含有系统表['.$t.']';
                         }
                     }
                     if (stripos($v, 'DROP TABLE') === false) {
                         try {
                             Db::execute($v);
                         } catch(\Exception $e) {
-                            return $this->error('导入SQL失败，请检查install.sql的语句是否正确或者表是否存在');
+                            return '导入SQL失败，请检查install.sql的语句是否正确或者表是否存在';
                         }
                     }
                 }
@@ -245,8 +264,8 @@ class Plugins extends Admin
         }
 
         // 导入菜单
-        if ( file_exists($plug_path.'menu.php') ) {
-            $menus = include_once $plug_path.'menu.php';
+        if ( file_exists($plugPath.'menu.php') ) {
+            $menus = include_once $plugPath.'menu.php';
             // 如果不是数组且不为空就当JSON数据转换
             if (!is_array($menus) && !empty($menus)) {
                 $menus = json_decode($menus, 1);
@@ -254,7 +273,7 @@ class Plugins extends Admin
             if (MenuModel::importMenu($menus, 'plugins.'.$plug['name'], 'plugins') == false) {
                 // 执行回滚
                 MenuModel::where('module', 'plugins.'.$plug['name'])->delete();
-                return $this->error('插件菜单失败(原因：可能是param参数异常)，请重新安装！');
+                return '插件菜单失败(原因：可能是param参数异常)，请重新安装';
             }
         }
         // 导入配置信息
@@ -263,17 +282,17 @@ class Plugins extends Admin
         }
 
         // 更新插件基础信息
-        $sqlmap = [];
-        $sqlmap['title'] = $info['title'];
-        $sqlmap['identifier'] = $info['identifier'];
-        $sqlmap['intro'] = $info['intro'];
-        $sqlmap['author'] = $info['author'];
-        $sqlmap['url'] = $info['author_url'];
-        $sqlmap['version'] = $info['version'];
-        $sqlmap['status'] = 2;
+        $sqlmap                 = [];
+        $sqlmap['title']        = $info['title'];
+        $sqlmap['identifier']   = $info['identifier'];
+        $sqlmap['intro']        = $info['intro'];
+        $sqlmap['author']       = $info['author'];
+        $sqlmap['url']          = $info['author_url'];
+        $sqlmap['version']      = $info['version'];
+        $sqlmap['status']       = 2;
         PluginsModel::where('id', $id)->update($sqlmap);
         PluginsModel::getConfig('', true);
-        return $this->success('插件已安装成功。', url('index?status=2'));
+        return true;
     }
 
     /**
@@ -284,23 +303,23 @@ class Plugins extends Admin
     {
         $plug = PluginsModel::where('id', $id)->find();
         if (!$plug) {
-            return $this->error('插件不存在！');
+            return $this->error('插件不存在');
         }
         if ($plug['status'] == 0) {
-            return $this->error('插件未安装！');
+            return $this->error('插件未安装');
         }
 
         $plug_path = ROOT_PATH.'plugins/'.$plug['name'].'/';
         
         // 插件基本信息
         if (!file_exists($plug_path.'info.php')) {
-            return $this->error('插件文件[info.php]丢失！');
+            return $this->error('插件文件[info.php]丢失');
         }
         $info = include_once $plug_path.'info.php';
 
         $plug_class = get_plugins_class($plug['name']);
         if (!class_exists($plug_class)) {
-            return $this->error('插件不存在！');
+            return $this->error('插件不存在');
         }
 
         $plug_obj = new $plug_class;
@@ -310,7 +329,7 @@ class Plugins extends Admin
         }
 
         if (!HookPluginsModel::del($plug['name'])) {
-            return $this->error('插件相关钩子删除失败！');
+            return $this->error('插件相关钩子删除失败');
         }
         cache('hook_plugins', null);
 
@@ -322,6 +341,10 @@ class Plugins extends Admin
             if ($sql_list) {
                 $sql_list = array_filter($sql_list);
                 foreach ($sql_list as $v) {
+                    // 防止删除整个数据库
+                    if (stripos(strtoupper($v), 'DROP DATABASE') !== false) {
+                        return $this->error('uninstall.sql文件疑似含有删除数据库的SQL');
+                    }
                     // 过滤sql里面的系统表
                     foreach (config('hs_system.tables') as $t) {
                         if (stripos($v, '`'.config('database.prefix').$t.'`') !== false) {
@@ -342,7 +365,7 @@ class Plugins extends Admin
         PluginsModel::where('id', $id)->setField('status', 0);
         PluginsModel::where('id', $id)->setField('config', '');
         PluginsModel::getConfig('', true);
-        return $this->success('插件已卸载成功。', url('index?status=0'));
+        return $this->success('插件已卸载成功', url('index?status=0'));
     }
 
     /**
@@ -382,7 +405,7 @@ class Plugins extends Admin
             }
             
             // 获取插件名
-            $files = Dir::getList($decom_path.'/upload/');
+            $files = Dir::getList($decom_path.'upload'.DS.'plugins'.DS);
 
             if (!isset($files[0])) {
                 Dir::delDir($decom_path);
@@ -401,7 +424,7 @@ class Plugins extends Admin
             }
 
             // 复制插件
-            Dir::copyDir($decom_path.'/upload/'.$app_name.'/', ROOT_PATH.'plugins'.DS.$app_name);
+            Dir::copyDir($decom_path.DS.'upload'.DS.'plugins'.DS.$app_name.DS, ROOT_PATH.'plugins'.DS.$app_name);
 
             // 删除临时目录和安装包
             Dir::delDir($decom_path);

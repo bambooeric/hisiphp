@@ -8,11 +8,11 @@
     {volist name="data_list" id="v"}
     {switch name="v['type']"}
         {case value="textarea"}
-            <!--多行文本-->
+            <!--文本域-->
             <div class="layui-form-item">
                 <label class="layui-form-label">{$v['title']}</label>
                 <div class="layui-input-inline">
-                    <textarea rows="6"  class="layui-textarea" name="id[{$v['id']}]" autocomplete="off" placeholder="请填写{$v['title']}">{:htmlspecialchars_decode($v['value'])}</textarea>
+                    <textarea rows="6"  class="layui-textarea" name="id[{$v['id']}]" autocomplete="off" placeholder="请填写{$v['title']}">{$v['value']}</textarea>
                 </div>
                 <div class="layui-form-mid layui-word-aux">{:htmlspecialchars_decode($v['tips'])}<br>调用方式：<code>config('{if condition="isset($v['module'])"}module_{/if}{:input('param.group', 'base')}.{$v['name']}')</code></div>
             </div>
@@ -140,6 +140,7 @@
     {/volist}
     <div class="layui-form-item">
         <div class="layui-input-block">
+            {:token()}
             <button type="submit" class="layui-btn layui-btn-normal" lay-submit="" lay-filter="formSubmit">提交</button>
         </div>
     </div>

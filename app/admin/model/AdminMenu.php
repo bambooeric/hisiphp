@@ -44,7 +44,7 @@ class AdminMenu extends Model
 
         // admin模块 只允许超级管理员在开发模式下修改
         if (isset($data['id']) && !empty($data['id'])) {
-            if ($data['module'] == 'admin' && (ADMIN_ID != 1 || config('develop.app_debug') == 0)) {
+            if ($data['module'] == 'admin' && (ADMIN_ID != 1 || config('sys.app_debug') == 0)) {
                 $this->error = '禁止修改系统模块！';
                 return false;
             }
@@ -65,6 +65,11 @@ class AdminMenu extends Model
             $this->error = $valid->getError();
             return false;
         }
+
+        if (isset($data['__token__'])) {
+            unset($data['__token__']);
+        }
+        
         $title = $data['title'];
         if (isset($data['id']) && !empty($data['id'])) {
             if (config('sys.multi_language') == 1) {
@@ -90,7 +95,7 @@ class AdminMenu extends Model
             }
         }
         if (!$res) {
-            $this->error = '保存失败！';
+            $this->error = '保存失败';
             return false;
         }
         self::getMainMenu(true);
@@ -109,7 +114,7 @@ class AdminMenu extends Model
     {
         $cache_tag = md5('_admin_child_menu'.$pid.$field.$status.dblang('admin'));
         $trees = [];
-        if (config('develop.app_debug') == 0 && $level == 0) {
+        if (config('sys.app_debug') == 0 && $level == 0) {
             $trees = cache($cache_tag);
         }
 
@@ -144,7 +149,7 @@ class AdminMenu extends Model
                 }
             }
             // 非开发模式，缓存菜单
-            if (config('develop.app_debug') == 0) {
+            if (config('sys.app_debug') == 0) {
                 cache($cache_tag, $trees);
             }
         }
@@ -165,7 +170,7 @@ class AdminMenu extends Model
     {
         $cache_tag = '_admin_menu'.ADMIN_ID.dblang('admin');
         $trees = [];
-        if (config('develop.app_debug') == 0 && $level == 0 && $update == false) {
+        if (config('sys.app_debug') == 0 && $level == 0 && $update == false) {
             $trees = cache($cache_tag);
         }
         if (empty($trees) || $update === true) {
@@ -201,7 +206,7 @@ class AdminMenu extends Model
                 }
             }
             // 非开发模式，缓存菜单
-            if (config('develop.app_debug') == 0) {
+            if (config('sys.app_debug') == 0) {
                 cache($cache_tag, $trees);
             }
         }
@@ -223,7 +228,7 @@ class AdminMenu extends Model
         $map = $menu = [];
         $map['id'] = $id;
         $row = self::where($map)->field('id,pid,title,url,param')->find();
-        if ($row->pid > 0) {
+        if (isset($row->pid) && $row->pid > 0) {
             if (isset($row->lang->title)) {
                 $row->title = $row->lang->title;
             }

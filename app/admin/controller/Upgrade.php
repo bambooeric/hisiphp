@@ -82,22 +82,21 @@ class Upgrade extends Admin
             $data['password'] = $password;
             $data['site_name'] = config('base.site_name');
             $data['version'] = config('hisiphp.version');
+            $data['ip'] = get_client_ip();
             $res = $this->cloud->data($data)->api('bind');
             if (isset($res['code']) && $res['code'] == 1) {
                 // 缓存站点标识
                 $file = APP_PATH.'extra'.DS.'hs_cloud.php';
-                $str = "<?php\nreturn ['identifier' => '".$res['data']."'];\n";
-                if (is_file($file)) {
+                $str = "<?php\n// 请妥善保管此文件，谨防泄漏\nreturn ['identifier' => '".$res['data']."'];\n";
+                if (file_exists($file)) {
                     unlink($file);
                 }
                 file_put_contents($file, $str);
-                if (is_file($file)) {
-                    $cloud = include_once $file;
-                    if (isset($cloud['identifier']) && !empty($cloud['identifier'])) {
-                        return $this->success('恭喜您，已成功绑定云平台账号。');
-                    }
+                if (file_exists($file)) {
+                    return $this->success('恭喜您，已成功绑定云平台账号。');
+                } else {
+                    return $this->error('extra/hs_cloud.php写入失败！');
                 }
-                return $this->error('extra/hs_cloud.php写入失败！');
             }
             return $this->error($res['msg'] ? $res['msg'] : '云平台绑定失败！(-0)');
         }
@@ -262,7 +261,7 @@ class Upgrade extends Admin
         $archive = new PclZip();
         $archive->PclZip($file);
         if(!$archive->extract(PCLZIP_OPT_PATH, $decom_path, PCLZIP_OPT_REPLACE_NEWER)) {
-            $this->error = '升级失败，请开启[backup/uppack]文件夹权限！';
+            $this->error = '升级失败，升级包可能已损坏！';
             return false;
         }
         // 备份需要升级的旧版本
@@ -349,7 +348,7 @@ class Upgrade extends Admin
         $archive = new PclZip();
         $archive->PclZip($file);
         if(!$archive->extract(PCLZIP_OPT_PATH, $decom_path, PCLZIP_OPT_REPLACE_NEWER)) {
-            $this->error = '升级失败，请开启[backup/uppack]文件夹权限！';
+            $this->error = '升级失败，升级包可能已损坏！';
             return false;
         }
         // 获取本次升级信息
@@ -456,7 +455,7 @@ class Upgrade extends Admin
         $archive = new PclZip();
         $archive->PclZip($file);
         if(!$archive->extract(PCLZIP_OPT_PATH, $decom_path, PCLZIP_OPT_REPLACE_NEWER)) {
-            $this->error = '升级失败，请开启[backup/uppack]文件夹权限！';
+            $this->error = '升级失败，升级包可能已损坏！';
             return false;
         }
         // 获取本次升级信息
@@ -489,7 +488,7 @@ class Upgrade extends Admin
             }
         }
 
-        if (!is_dir($decom_path.DS.'upload'.DS.$plugins->name)) {
+        if (!is_dir($decom_path.DS.'upload'.DS.'plugins'.DS.$plugins->name)) {
             $this->error = '升级失败，升级包文件不完整！';
             return false;
         }
@@ -498,7 +497,7 @@ class Upgrade extends Admin
             return false;
         }
         // 复制插件目录
-        Dir::copyDir($decom_path.DS.'upload'.DS.$plugins->name, '.'.ROOT_DIR.'plugins'.DS.$plugins->name);
+        Dir::copyDir($decom_path.DS.'upload'.DS.'plugins'.DS.$plugins->name, '.'.ROOT_DIR.'plugins'.DS.$plugins->name);
 
         // 读取插件info
         if (!is_file('.'.ROOT_DIR.'plugins'.DS.$plugins->name.DS.'info.php')) {
@@ -589,7 +588,7 @@ class Upgrade extends Admin
         $archive = new PclZip();
         $archive->PclZip($file);
         if(!$archive->extract(PCLZIP_OPT_PATH, $decom_path, PCLZIP_OPT_REPLACE_NEWER)) {
-            $this->error = '升级失败，请开启[backup/uppack]文件夹权限！';
+            $this->error = '升级失败，升级包可能已损坏！';
             return false;
         }
         // 获取本次升级信息
